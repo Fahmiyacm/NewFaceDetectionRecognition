@@ -1,188 +1,195 @@
-import streamlit as st
+import os
+import json
+import pickle
 import cv2
 import numpy as np
-import pickle
-from PIL import Image
-import mediapipe as mp
-import face_recognition
-import os
-from sklearn.metrics import accuracy_score, precision_score, recall_score
+import streamlit as st
 import matplotlib.pyplot as plt
+from PIL import Image
+import face_recognition
 
-# -----------------------------
-# Load encodings
-# -----------------------------
-data = pickle.load(open("encodings.pkl", "rb"))
+# ---------------- PATHS ----------------
 
-# -----------------------------
-# MediaPipe
-# -----------------------------
-mp_face = mp.solutions.face_detection
-detector = mp_face.FaceDetection(min_detection_confidence=0.5)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# -----------------------------
-# UI
-# -----------------------------
-st.set_page_config(page_title="Face Recognition System", layout="centered")
+MODEL_PATH = os.path.join(BASE_DIR, "model", "svm_model.pkl")
+METRICS_PATH = os.path.join(BASE_DIR, "model", "metrics.json")
+CURVE_PATH = os.path.join(BASE_DIR, "model", "curve.json")
 
-st.title("🔍 Face Recognition System")
+# ---------------- LOAD FILES ----------------
 
-menu = st.sidebar.radio("Select Option", ["Predict", "Evaluation Dashboard"])
+with open(MODEL_PATH, "rb") as f:
+    model = pickle.load(f)
 
-# =========================================================
-# 🔹 1. PREDICTION SECTION
-# =========================================================
-if menu == "Predict":
+with open(METRICS_PATH, "r") as f:
+    metrics = json.load(f)
 
-    uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
+with open(CURVE_PATH, "r") as f:
+    curve = json.load(f)
 
-    if uploaded_file:
+# ---------------- PAGE ----------------
+
+st.set_page_config(
+    page_title="Face Recognition System",
+    page_icon="🔍",
+    layout="centered"
+)
+
+st.title("🔍 End-to-End Face Detection & Recognition System")
+
+# ---------------- TABS ----------------
+
+tab1, tab2 = st.tabs(
+    ["🔍 Face Recognition", "📊 Model Performance"]
+)
+
+# =====================================================
+# TAB 1 : FACE RECOGNITION
+# =====================================================
+
+with tab1:
+
+    st.header("Upload Image")
+
+    uploaded_file = st.file_uploader(
+        "Choose an image",
+        type=["jpg", "jpeg", "png"]
+    )
+
+    if uploaded_file is not None:
 
         image = Image.open(uploaded_file)
-        image = np.array(image)
+        image_np = np.array(image)
 
-        rgb = image.copy()
+        rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
 
-        results = detector.process(rgb)
+        face_locations = face_recognition.face_locations(rgb)
+        face_encodings = face_recognition.face_encodings(
+            rgb,
+            face_locations
+        )
 
-        if results.detections:
-
-            for detection in results.detections:
-
-                bbox = detection.location_data.relative_bounding_box
-
-                h, w, _ = image.shape
-
-                x = int(bbox.xmin * w)
-                y = int(bbox.ymin * h)
-                w_box = int(bbox.width * w)
-                h_box = int(bbox.height * h)
-
-                x = max(0, x)
-                y = max(0, y)
-
-                face = rgb[y:y+h_box, x:x+w_box]
-
-                name = "Unknown"
-
-                if face.size != 0 and face.shape[0] > 20 and face.shape[1] > 20:
-
-                    face = cv2.resize(face, (160, 160))
-
-                    encodings = face_recognition.face_encodings(face)
-
-                    if len(encodings) > 0:
-
-                        encoding = encodings[0]
-
-                        matches = face_recognition.compare_faces(
-                            data["encodings"],
-                            encoding
-                        )
-
-                        face_distances = face_recognition.face_distance(
-                            data["encodings"],
-                            encoding
-                        )
-
-                        best_match = np.argmin(face_distances)
-
-                        if matches[best_match]:
-                            name = data["names"][best_match]
-
-                cv2.rectangle(image, (x, y), (x+w_box, y+h_box), (0, 255, 0), 2)
-                cv2.putText(image, name, (x, y-10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-
-        st.image(image, caption="Result", use_container_width=True)
-
-# =========================================================
-# 🔹 2. EVALUATION DASHBOARD (FIXED + SAFE)
-# =========================================================
-elif menu == "Evaluation Dashboard":
-
-    st.subheader("📊 Model Evaluation")
-
-    test_path = "dataset/test"
-
-    if not os.path.exists(test_path):
-        st.error("Dataset folder not found!")
-    else:
-
-        y_true = []
-        y_pred = []
-
-        for person in os.listdir(test_path):
-            person_path = os.path.join(test_path, person)
-
-            if not os.path.isdir(person_path):
-                continue
-
-            for img_name in os.listdir(person_path):
-
-                img_path = os.path.join(person_path, img_name)
-
-                image = cv2.imread(img_path)
-                if image is None:
-                    continue
-
-                rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-                results = detector.process(rgb)
-
-                pred = "Unknown"
-
-                if results.detections:
-
-                    for detection in results.detections:
-
-                        bbox = detection.location_data.relative_bounding_box
-
-                        h, w, _ = image.shape
-
-                        x = int(bbox.xmin * w)
-                        y = int(bbox.ymin * h)
-                        w_box = int(bbox.width * w)
-                        h_box = int(bbox.height * h)
-
-                        face = rgb[y:y+h_box, x:x+w_box]
-
-                        if face.size != 0 and face.shape[0] > 20:
-
-                            face = cv2.resize(face, (160, 160))
-
-                            encodings = face_recognition.face_encodings(face)
-
-                            if len(encodings) > 0:
-
-                                encoding = encodings[0]
-
-                                face_distances = face_recognition.face_distance(
-                                    data["encodings"],
-                                    encoding
-                                )
-
-                                best_match = np.argmin(face_distances)
-                                pred = data["names"][best_match]
-
-                y_true.append(person)
-                y_pred.append(pred)
-
-        # -----------------------------
-        # Metrics (SAFE)
-        # -----------------------------
-        if len(y_true) == 0:
-            st.warning("No test data found")
+        if len(face_locations) == 0:
+            st.warning("No face detected.")
         else:
-            acc = accuracy_score(y_true, y_pred)
-            prec = precision_score(y_true, y_pred, average="macro", zero_division=0)
-            rec = recall_score(y_true, y_pred, average="macro", zero_division=0)
 
-            st.write("### Accuracy:", round(acc, 2))
-            st.write("### Precision:", round(prec, 2))
-            st.write("### Recall:", round(rec, 2))
+            results = []
 
-            fig, ax = plt.subplots()
-            ax.bar(["Accuracy", "Precision", "Recall"], [acc, prec, rec])
-            ax.set_ylim(0, 1)
-            st.pyplot(fig)
+            for (top, right, bottom, left), encoding in zip(
+                    face_locations,
+                    face_encodings):
+
+                # Prediction
+                prediction = model.predict([encoding])[0]
+
+                confidence = "N/A"
+
+                # Try probability if available
+                if hasattr(model, "predict_proba"):
+                    prob = np.max(model.predict_proba([encoding]))
+                    confidence = f"{prob * 100:.2f}%"
+
+                # Draw box
+                cv2.rectangle(
+                    image_np,
+                    (left, top),
+                    (right, bottom),
+                    (0, 255, 0),
+                    2
+                )
+
+                cv2.putText(
+                    image_np,
+                    prediction,
+                    (left, top - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 0),
+                    2
+                )
+
+                results.append(
+                    {
+                        "Name": prediction,
+                        "Confidence": confidence
+                    }
+                )
+
+            st.image(
+                image_np,
+                caption="Recognition Result",
+                width=500
+            )
+
+            st.subheader("Recognition Results")
+
+            for r in results:
+                st.write(
+                    f"**Name:** {r['Name']} | "
+                    f"**Confidence:** {r['Confidence']}"
+                )
+
+# =====================================================
+# TAB 2 : MODEL PERFORMANCE
+# =====================================================
+
+with tab2:
+
+    st.header("Model Evaluation")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Accuracy",
+        f"{metrics['accuracy']:.4f}"
+    )
+
+    col2.metric(
+        "Precision",
+        f"{metrics['precision']:.4f}"
+    )
+
+    col3.metric(
+        "Recall",
+        f"{metrics['recall']:.4f}"
+    )
+
+    st.markdown("---")
+
+    st.subheader("Learning Curve")
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    ax.plot(
+        curve["train_sizes"],
+        curve["train_acc"],
+        marker="o",
+        label="Train Accuracy"
+    )
+
+    ax.plot(
+        curve["train_sizes"],
+        curve["test_acc"],
+        marker="o",
+        label="Validation Accuracy"
+    )
+
+    ax.set_xlabel("Training Samples")
+    ax.set_ylabel("Accuracy")
+    ax.set_title("Model Learning Curve")
+    ax.legend()
+    ax.grid(True)
+
+    st.pyplot(fig)
+
+    st.markdown("---")
+
+    st.write(
+        """
+        **Accuracy**: Overall percentage of correctly recognized faces.
+
+        **Precision**: How many predicted identities were correct.
+
+        **Recall**: How many actual identities were successfully recognized.
+        """
+    )

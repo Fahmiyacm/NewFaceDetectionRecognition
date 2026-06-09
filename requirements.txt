@@ -1,8 +1,7 @@
 streamlit
-numpy
-pillow
 opencv-python-headless
-mediapipe==0.10.35
-face_recognition
+face-recognition
+numpy
 scikit-learn
 matplotlib
+Pillow
