@@ -1,11 +1,11 @@
 import os
 import json
 import pickle
-import cv2
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
-from PIL import Image
+
+from PIL import Image, ImageDraw
 import face_recognition
 
 # ---------------- PATHS ----------------
@@ -58,54 +58,53 @@ with tab1:
 
     if uploaded_file is not None:
 
-        image = Image.open(uploaded_file)
+        image = Image.open(uploaded_file).convert("RGB")
         image_np = np.array(image)
 
-        rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
+        face_locations = face_recognition.face_locations(image_np)
 
-        face_locations = face_recognition.face_locations(rgb)
         face_encodings = face_recognition.face_encodings(
-            rgb,
+            image_np,
             face_locations
         )
 
         if len(face_locations) == 0:
+
             st.warning("No face detected.")
+
         else:
+
+            draw = ImageDraw.Draw(image)
 
             results = []
 
             for (top, right, bottom, left), encoding in zip(
-                    face_locations,
-                    face_encodings):
+                face_locations,
+                face_encodings
+            ):
 
-                # Prediction
                 prediction = model.predict([encoding])[0]
 
                 confidence = "N/A"
 
-                # Try probability if available
                 if hasattr(model, "predict_proba"):
-                    prob = np.max(model.predict_proba([encoding]))
+
+                    prob = np.max(
+                        model.predict_proba([encoding])
+                    )
+
                     confidence = f"{prob * 100:.2f}%"
 
-                # Draw box
-                cv2.rectangle(
-                    image_np,
-                    (left, top),
-                    (right, bottom),
-                    (0, 255, 0),
-                    2
+                draw.rectangle(
+                    [(left, top), (right, bottom)],
+                    outline="green",
+                    width=3
                 )
 
-                cv2.putText(
-                    image_np,
+                draw.text(
+                    (left, max(0, top - 20)),
                     prediction,
-                    (left, top - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 255, 0),
-                    2
+                    fill="green"
                 )
 
                 results.append(
@@ -116,7 +115,7 @@ with tab1:
                 )
 
             st.image(
-                image_np,
+                image,
                 caption="Recognition Result",
                 width=500
             )
@@ -124,6 +123,7 @@ with tab1:
             st.subheader("Recognition Results")
 
             for r in results:
+
                 st.write(
                     f"**Name:** {r['Name']} | "
                     f"**Confidence:** {r['Confidence']}"
