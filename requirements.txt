@@ -1,6 +1,5 @@
 streamlit
-opencv-python-headless
-face-recognition
+opencv-python-headless==4.8.1.78
 numpy
 scikit-learn
 matplotlib
